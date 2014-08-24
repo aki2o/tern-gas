@@ -1,46 +1,36 @@
 var request = require("request");
 var jsdom = require("jsdom");
 
-var jquery_url = "http://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.js";
-var svr = "http://developers.google.com";
-var rooturi = "/apps-script/reference/";
-var categories = ["base", "cache", "charts", "content", "html", "jdbc", "lock", "mail",
-                  "properties", "script", "ui", "url-fetch", "utilities", "xml-service",
-                  "calendar", "contacts", "docs-list", "document", "drive", "forms",
-                  "gmail", "groups", "language", "maps", "sites", "spreadsheet" ];
+JQUERY_URL = "http://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.js";
+GOOGLE_DOC_SERVER = "http://developers.google.com";
+ROOT_URI = "/apps-script/reference/";
+SCRIPT_CATEGORIES = ["base", "cache", "charts", "content", "html", "jdbc", "lock", "mail",
+                     "properties", "script", "ui", "url-fetch", "utilities", "xml-service",
+                     "calendar", "contacts", "docs-list", "document", "drive", "forms",
+                     "gmail", "groups", "language", "maps", "sites", "spreadsheet" ];
 
-var typeh = {};
-var finished_of = {};
+gScriptTypeHash = {};
+gTaskFinished_Of = {};
 
 fetch_category("calendar");
 
 
-function make_definition() {
-    if ( ! is_finished() ) return;
-    
-}
-
-function is_finished() {
-    for ( var task in finished_of ) {
-        if ( ! finished_of[task] ) return false;
-    }
-    return true;
-}
-
 function fetch_category(category) {
-    finished_of[category] = false;
+    gTaskFinished_Of[category] = false;
     fetch_document(get_category_url(category), function ($) {
         parse_category_document(category, $);
-        finished_of[category] = true;
+        gTaskFinished_Of[category] = true;
+        make_definition();
     });
 }
 
 function fetch_type(category, typenm, url) {
     var key = category+"."+typenm;
-    finished_of[key] = false;
+    gTaskFinished_Of[key] = false;
     fetch_document(url, function ($) {
         parse_type_document(category, typenm, $);
-        finished_of[key] = true;
+        gTaskFinished_Of[key] = true;
+        make_definition();
     });
 }
 
@@ -55,7 +45,7 @@ function fetch_document(url, success_func) {
             console.error("Failed fetch category:'"+category+"' : Returned status is "+res.statusCode);
             return;
         }
-        jsdom.env({ html: body, scripts: [ jquery_url ] , done: function(err, window) {
+        jsdom.env({ html: body, scripts: [ JQUERY_URL ] , done: function(err, window) {
             if ( err ) {
                 console.error("Failed do jsdom : "+err);
                 return;
@@ -78,7 +68,7 @@ function parse_category_document(category, $) {
             var typenm = tlink.eq(0).attr("title");
             if ( ! typenm ) continue;
             var url = get_refer_url( category, tlink.eq(0) );
-            typeh[typenm] = { name: typenm, kind: kind, global: global, url: url };
+            gScriptTypeHash[typenm] = { name: typenm, kind: kind, global: global, category: category, url: url };
             console.log("Found type : name:'"+typenm+"' kind:'"+kind+"' global:'"+global+"'");
             fetch_type(category, typenm, url);
         }
@@ -108,7 +98,7 @@ function find_types_in_sidebar(category, $) {
 
 function parse_type_document(category, typenm, $) {
     var maincontent = $("#gc-content");
-    var type = typeh[typenm];
+    var type = gScriptTypeHash[typenm];
     
     // Get doc of type
     type.doc = get_documentation_from_element( maincontent.find(".type.doc") );
@@ -167,7 +157,7 @@ function parse_type_document(category, typenm, $) {
 }
 
 function get_category_url(category) {
-    return svr + rooturi + category;
+    return GOOGLE_DOC_SERVER + ROOT_URI + category;
 }
 
 function get_refer_url(category, a) {
@@ -176,10 +166,10 @@ function get_refer_url(category, a) {
         return null;
     }
     else if ( href.match(/^\//) ) {
-        return svr + href;
+        return GOOGLE_DOC_SERVER + href;
     }
     else {
-        return svr + rooturi + category + "/" + href;
+        return GOOGLE_DOC_SERVER + ROOT_URI + category + "/" + href;
     }
 }
 
@@ -195,14 +185,74 @@ function get_type_from_cell(category, td) {
 }
 
 function get_symbol_from_element(e) {
-    return e.text().replace(/\s/g, "");
+    return e.text().replace(/\s+/g, "");
 }
 
 function get_signature_from_element(e) {
-    return e.text().replace(/[\t\n]/g, "").replace(/ +/g, " ");
+    return e.text().replace(/[\t\n]+/g, "").replace(/ +/g, " ");
 }
 
 function get_documentation_from_element(e) {
     return e.text().replace(/^\s+/, "").replace(/\s+$/, "");
+}
+
+function is_finished() {
+    for ( var task in gTaskFinished_Of ) {
+        if ( ! gTaskFinished_Of[task] ) return false;
+    }
+    return true;
+}
+
+function make_definition() {
+    if ( ! is_finished() ) return;
+    console.log("Start make definition");
+    var def = build_global_type_definition();
+    def["!name"] = "gas";
+    def["!define"] = build_local_type_definition();
+    make_plugin(def);
+}
+
+function build_global_type_definition() {
+}
+
+function build_local_type_definition() {
+    var categoryh = {};
+    for ( var typenm in gScriptTypeHash ) {
+        var t = gScriptTypeHash[typenm];
+        if ( t.global ) continue;
+        if ( ! categoryh[t.category] ) categoryh[t.category] = {};
+        var typeh = categoryh[t.category];
+        typeh[typenm] = build_type_definition(t);
+    }
+    return categoryh;
+}
+
+function build_type_definition(type) {
+    var ret = {};
+    ret["!url"] = type.url;
+    ret["!doc"] = type.doc;
+    ret["prototype"] = build_member_definition(type);
+    return ret;
+}
+
+function build_member_definition(type) {
+    var ret = {};
+    var props = type.property;
+    for ( var i = 0; i < props.length; i++ ) {
+        var p = props[i];
+        ret[p.name] = { "!type": p.type, "!doc": p.doc };
+    }
+    var mtds = type.method;
+    for ( var i = 0; i < mtds.length; i++ ) {
+        var m = mtds[i];
+        ret[m.name] = { "!type": build_method_signature(m), "!url": m.url, "!doc": m.doc };
+    }
+    return ret;
+}
+
+function build_method_signature(mtd) {
+}
+
+function make_plugin(def) {
 }
 
