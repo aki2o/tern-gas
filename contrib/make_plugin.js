@@ -1,6 +1,3 @@
-var request = require("request");
-var jsdom = require("jsdom");
-
 JQUERY_URL = "http://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.js";
 GOOGLE_DOC_SERVER = "http://developers.google.com";
 ROOT_URI = "/apps-script/reference/";
@@ -12,15 +9,25 @@ SCRIPT_CATEGORIES = ["base", "cache", "charts", "content", "html", "jdbc", "lock
 gScriptTypeHash = {};
 gTaskFinished_Of = {};
 
+var request = require("request");
+var jsdom = require("jsdom");
+var mu = require("mu2");
+var fs = require('fs');
+
 fetch_category("calendar");
 
 
+
+//////////////////////
+// Fetch Definition
+
 function fetch_category(category) {
+    console.info("Fetch documentation for "+category+" ...");
     gTaskFinished_Of[category] = false;
     fetch_document(get_category_url(category), function ($) {
         parse_category_document(category, $);
         gTaskFinished_Of[category] = true;
-        make_definition();
+        make_plugin();
     });
 }
 
@@ -30,7 +37,7 @@ function fetch_type(category, typenm, url) {
     fetch_document(url, function ($) {
         parse_type_document(category, typenm, $);
         gTaskFinished_Of[key] = true;
-        make_definition();
+        make_plugin();
     });
 }
 
@@ -194,7 +201,33 @@ function get_signature_from_element(e) {
 }
 
 function get_documentation_from_element(e) {
-    return e.text().replace(/^\s+/, "").replace(/\s+$/, "");
+    return e.text().replace(/^\s+/, "").replace(/\s+$/, "").replace(/\s+/g, " ");
+}
+
+
+/////////////////
+// Make Plugin
+
+function make_plugin() {
+    if ( ! is_finished() ) return;
+    console.log("Start make plugin");
+    var fpath = __dirname + "/gas.js";
+    console.info("Make plugin file ...");
+    mu.root = __dirname;
+    var st = mu.compileAndRender("template.js", { def: generate_definition() });
+    st.on("data", function (data) {
+        fs.writeFile(fpath, data.toString(), function (err) {
+            console.error("Failed write plugin : "+err);
+        });
+    });
+}
+
+function generate_definition() {
+    console.log("Start make definition");
+    var def = build_global_type_definition();
+    def["!name"] = "gas";
+    def["!define"] = build_local_type_definition();
+    return def;
 }
 
 function is_finished() {
@@ -202,15 +235,6 @@ function is_finished() {
         if ( ! gTaskFinished_Of[task] ) return false;
     }
     return true;
-}
-
-function make_definition() {
-    if ( ! is_finished() ) return;
-    console.log("Start make definition");
-    var def = build_global_type_definition();
-    def["!name"] = "gas";
-    def["!define"] = build_local_type_definition();
-    make_plugin(def);
 }
 
 function build_global_type_definition() {
@@ -260,7 +284,7 @@ function build_member_definition(type) {
 
 function build_method_signature(mtd) {
     var argpart = "";
-    var args = mtd.argument;
+    var args = mtd.argument || [];
     for ( var i = 0; i < args.length; i++ ) {
         var a = args[i];
         if ( argpart != "" ) argpart += ", ";
@@ -279,8 +303,8 @@ function build_type_attribute(typeattr, asInstance) {
     var typepart = "";
     var type = gScriptTypeHash[typefullnm];
     if ( ! type ) {
-        if ( typefullnm == "Integer" ) { typepart = "number"; }
-        else                           { typepart = typefullnm.toLowerCase(); }
+        typepart = typefullnm == "Integer" ? "number"
+                 :                           typefullnm.toLowerCase();
     }
     else {
         typepart = type.global ? prefix+type.name : prefix+typefullnm;
@@ -289,5 +313,3 @@ function build_type_attribute(typeattr, asInstance) {
     return isArray ? "["+prefix+typepart+"]" : prefix+typepart;
 }
 
-function make_plugin(def) {
-}
