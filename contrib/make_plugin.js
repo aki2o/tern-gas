@@ -11,7 +11,6 @@ gTaskFinished_Of = {};
 
 var request = require("request");
 var jsdom = require("jsdom");
-var mu = require("mu2");
 var fs = require('fs');
 
 fetch_category("calendar");
@@ -213,12 +212,14 @@ function make_plugin() {
     console.log("Start make plugin");
     var fpath = __dirname + "/gas.js";
     console.info("Make plugin file ...");
-    mu.root = __dirname;
-    var st = mu.compileAndRender("template.js", { def: generate_definition() });
-    st.on("data", function (data) {
-        fs.writeFile(fpath, data.toString(), function (err) {
+    var rbuff = fs.readFileSync(__dirname+"/template.js", "utf8");
+    var wbuff = rbuff.replace(/'!def'/, JSON.stringify( generate_definition() ));
+    fs.writeFile(fpath, wbuff, "utf8", function (err) {
+        if ( err ) {
             console.error("Failed write plugin : "+err);
-        });
+            return;
+        }
+        console.info("Finished make plugin : "+fpath);
     });
 }
 

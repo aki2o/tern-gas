@@ -6,11 +6,14 @@
     mod(tern, tern);
 })(function(infer, tern) {
     "use strict";
+    
     tern.registerPlugin("gas", function(server, options) {
         server._gmaps = {};
         return {
             defs : defs
         };
     });
-    var defs = {{&def}};
+    
+    var defs = '!def';
+    
 })
