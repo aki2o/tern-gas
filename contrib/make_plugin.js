@@ -11,10 +11,25 @@ gTaskFinished_Of = {};
 
 var request = require("request");
 var jsdom = require("jsdom");
+var opts = require("opts");
 var fs = require('fs');
+
+var verbose = false;
+opts.parse([{ short: "v",
+              long: "verbose",
+              callback: function () { verbose = true; } }], true);
 
 fetch_category("calendar");
 
+
+
+/////////////
+// Utility
+
+function logging(arg) {
+    if ( ! verbose ) return;
+    console.log(arg);
+}
 
 
 //////////////////////
@@ -26,7 +41,7 @@ function fetch_category(category) {
     fetch_document(get_category_url(category), function ($) {
         parse_category_document(category, $);
         gTaskFinished_Of[category] = true;
-        make_plugin();
+        make_plugin($);
     });
 }
 
@@ -36,12 +51,12 @@ function fetch_type(category, typenm, url) {
     fetch_document(url, function ($) {
         parse_type_document(category, typenm, $);
         gTaskFinished_Of[key] = true;
-        make_plugin();
+        make_plugin($);
     });
 }
 
 function fetch_document(url, success_func) {
-    console.log("Start fetch document : "+url);
+    logging("Start fetch document : "+url);
     request({ url: url }, function(err, res, body) {
         if ( err ) {
             console.error("Failed fetch category:'"+category+"' : "+err);
@@ -63,7 +78,7 @@ function fetch_document(url, success_func) {
 
 function parse_category_document(category, $) {
     // Collect type from sidebar
-    console.log("Start parse to category : "+category);
+    logging("Start parse to category : "+category);
     var types = find_types_in_sidebar(category, $);
     if ( ! types ) return;
     var kind = "class";
@@ -76,7 +91,7 @@ function parse_category_document(category, $) {
             var url = get_refer_url( category, tlink.eq(0) );
             var key = category+"."+typenm;
             gScriptTypeHash[key] = { name: typenm, kind: kind, global: global, category: category, url: url };
-            console.log("Found type : name:'"+typenm+"' kind:'"+kind+"' global:'"+global+"'");
+            logging("Found type : name:'"+typenm+"' kind:'"+kind+"' global:'"+global+"'");
             fetch_type(category, typenm, url);
         }
         else {
@@ -90,55 +105,48 @@ function parse_category_document(category, $) {
     }
 }
 
-function find_types_in_sidebar(category, $) {
-    var titles = $("#gc-sidebar a");
-    var categoryurl = get_category_url(category);
-    for ( var i = 0; i < titles.length; i++ ) {
-        var url = get_refer_url( category, titles.eq(i) );
-        if ( ! url || url != categoryurl ) continue;
-        console.log("Found category element in sidebar : "+category);
-        return titles.eq(i).parent().find("li");
-    }
-    console.error("Failed find category element in sidebar : "+category);
-    return;
-}
-
 function parse_type_document(category, typenm, $) {
     var maincontent = $("#gc-content");
     var type = gScriptTypeHash[category+"."+typenm];
     
     // Get doc of type
     type.doc = get_documentation_from_element( maincontent.find(".type.doc") );
-    console.log("Got doc of type:'"+typenm+"' : "+type.doc);
+    logging("Got doc of type:'"+typenm+"' : "+type.doc);
     
     // Get property
     var props = [];
-    var propdefs = maincontent.find(".type.toc table.members.property tr");
-    for ( var i = 1; i < propdefs.length; i++ ) {
-        var e = propdefs.eq(i).find("td");
-        var propnm = get_symbol_from_element( e.eq(0) );
-        var ptype = get_type_from_cell( category, e.eq(1) );
-        var doc = get_documentation_from_element( e.eq(2) );
-        props.push( { name: propnm, type: ptype, doc: doc } );
-        console.log("Got prop '"+typenm+"' : name:'"+propnm+"' type:'"+ptype+"' doc:'"+doc+"'");
+    var propdefs = maincontent.find(".type.toc table.members.property");
+    if ( propdefs.length > 0 ) {
+        var propentries = propdefs.eq(0).find("tr");
+        for ( var i = 1; i < propentries.length; i++ ) {
+            var e = propentries.eq(i).find("td");
+            var propnm = get_symbol_from_element( e.eq(0) );
+            var ptype = get_type_from_cell( category, e.eq(1) );
+            var doc = get_documentation_from_element( e.eq(2) );
+            props.push( { name: propnm, type: ptype, doc: doc } );
+            logging("Got prop '"+typenm+"' : name:'"+propnm+"' type:'"+ptype+"' doc:'"+doc+"'");
+        }
     }
     type.property = props;
     
     // Get method
     var mtds = [];
     var mtdsigh = {};
-    var mtddefs = maincontent.find(".type.toc table.members.function tr");
-    for ( var i = 1; i < mtddefs.length; i++ ) {
-        var e = mtddefs.eq(i).find("td");
-        var sig = get_signature_from_element( e.eq(0).find("a") );
-        var mtdnm = sig.replace(/\(.+$/, "");
-        var url = get_refer_url( category, e.eq(0).find("a").eq(0) );
-        var ret = get_type_from_cell( category, e.eq(1) );
-        var doc = get_documentation_from_element( e.eq(2) );
-        var mtd = { name: mtdnm, signature: sig, return: ret, doc: doc, url: url };
-        mtds.push(mtd);
-        mtdsigh[sig] = mtd;
-        console.log("Got method of '"+typenm+"' : sig:'"+sig+"' ret:'"+ret+"' doc:'"+doc+"'"+"' url:'"+url+"'");
+    var mtddefs = maincontent.find(".type.toc table.members.function");
+    if ( mtddefs.length > 0 ) {
+        var mtdentries = mtddefs.eq(0).find("tr");
+        for ( var i = 1; i < mtdentries.length; i++ ) {
+            var e = mtdentries.eq(i).find("td");
+            var sig = get_signature_from_element( e.eq(0).find("a") );
+            var mtdnm = sig.replace(/\(.+$/, "");
+            var url = get_refer_url( category, e.eq(0).find("a").eq(0) );
+            var ret = get_type_from_cell( category, e.eq(1) );
+            var doc = get_documentation_from_element( e.eq(2) );
+            var mtd = { name: mtdnm, signature: sig, return: ret, doc: doc, url: url };
+            mtds.push(mtd);
+            mtdsigh[sig] = mtd;
+            logging("Got method of '"+typenm+"' : sig:'"+sig+"' ret:'"+ret+"' doc:'"+doc+"'"+"' url:'"+url+"'");
+        }
     }
     var mtddetails = maincontent.find(".function.doc");
     for ( var i = 0; i < mtddetails.length; i++ ) {
@@ -156,11 +164,24 @@ function parse_type_document(category, typenm, $) {
             var argtype = get_type_from_cell( category, e.eq(1) );
             var doc = get_documentation_from_element( e.eq(2) );
             args.push({ name: argnm, type: argtype, doc: doc });
-            console.log("Got arg of '"+mtd["name"]+"' : name:'"+argnm+"' type:'"+argtype+"' doc:'"+doc+"'");
+            logging("Got arg of '"+mtd["name"]+"' : name:'"+argnm+"' type:'"+argtype+"' doc:'"+doc+"'");
         }
         mtd.argument = args;
     }
     type.method = mtds;
+}
+
+function find_types_in_sidebar(category, $) {
+    var titles = $("#gc-sidebar a");
+    var categoryurl = get_category_url(category);
+    for ( var i = 0; i < titles.length; i++ ) {
+        var url = get_refer_url( category, titles.eq(i) );
+        if ( ! url || url != categoryurl ) continue;
+        logging("Found category element in sidebar : "+category);
+        return titles.eq(i).parent().find("li");
+    }
+    console.error("Failed find category element in sidebar : "+category);
+    return;
 }
 
 function get_category_url(category) {
@@ -207,13 +228,13 @@ function get_documentation_from_element(e) {
 /////////////////
 // Make Plugin
 
-function make_plugin() {
+function make_plugin($) {
     if ( ! is_finished() ) return;
-    console.log("Start make plugin");
+    logging("Start make plugin");
     var fpath = __dirname + "/gas.js";
     console.info("Make plugin file ...");
     var rbuff = fs.readFileSync(__dirname+"/template.js", "utf8");
-    var wbuff = rbuff.replace(/'!def'/, JSON.stringify( generate_definition() ));
+    var wbuff = rbuff.replace(/'!def'/, JSON.stringify( generate_definition($) ));
     fs.writeFile(fpath, wbuff, "utf8", function (err) {
         if ( err ) {
             console.error("Failed write plugin : "+err);
@@ -223,12 +244,11 @@ function make_plugin() {
     });
 }
 
-function generate_definition() {
-    console.log("Start make definition");
-    var def = build_global_type_definition();
-    def["!name"] = "gas";
-    def["!define"] = build_local_type_definition();
-    return def;
+function generate_definition($) {
+    logging("Start make definition");
+    var ret = { "!name": "gas", "!define": build_local_type_definition() };
+    $.extend(ret, build_global_type_definition());
+    return ret;
 }
 
 function is_finished() {
@@ -301,16 +321,18 @@ function build_type_attribute(typeattr, asInstance) {
     if ( ! typeattr || typeattr == "" || typeattr == "void" ) return null;
     var typefullnm = typeattr.replace(/\[\]$/, "");
     var isArray = typefullnm == typeattr ? false : true;
+    var prefix = asInstance ? "+" : "";
     var typepart = "";
     var type = gScriptTypeHash[typefullnm];
-    if ( ! type ) {
+    if ( ! type && ! typefullnm.match(/\./) ) {
         typepart = typefullnm == "Integer" ? "number"
+                 : typefullnm == "Boolean" ? "bool"
                  :                           typefullnm.toLowerCase();
     }
     else {
-        typepart = type.global ? prefix+type.name : prefix+typefullnm;
+        typepart = type && type.global ? prefix+type.name
+                 :                       prefix+typefullnm;
     }
-    var prefix = asInstance ? "+" : "";
-    return isArray ? "["+prefix+typepart+"]" : prefix+typepart;
+    return isArray ? "["+typepart+"]" : typepart;
 }
 
