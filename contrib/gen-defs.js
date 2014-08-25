@@ -68,7 +68,8 @@ function parse_category_document(category, $) {
             var typenm = tlink.eq(0).attr("title");
             if ( ! typenm ) continue;
             var url = get_refer_url( category, tlink.eq(0) );
-            gScriptTypeHash[typenm] = { name: typenm, kind: kind, global: global, category: category, url: url };
+            var key = category+"."+typenm;
+            gScriptTypeHash[key] = { name: typenm, kind: kind, global: global, category: category, url: url };
             console.log("Found type : name:'"+typenm+"' kind:'"+kind+"' global:'"+global+"'");
             fetch_type(category, typenm, url);
         }
@@ -98,7 +99,7 @@ function find_types_in_sidebar(category, $) {
 
 function parse_type_document(category, typenm, $) {
     var maincontent = $("#gc-content");
-    var type = gScriptTypeHash[typenm];
+    var type = gScriptTypeHash[category+"."+typenm];
     
     // Get doc of type
     type.doc = get_documentation_from_element( maincontent.find(".type.doc") );
@@ -151,7 +152,7 @@ function parse_type_document(category, typenm, $) {
             args.push({ name: argnm, type: argtype, doc: doc });
             console.log("Got arg of '"+mtd["name"]+"' : name:'"+argnm+"' type:'"+argtype+"' doc:'"+doc+"'");
         }
-        mtd.args = args;
+        mtd.argument = args;
     }
     type.method = mtds;
 }
@@ -181,7 +182,7 @@ function get_type_from_cell(category, td) {
                      : ! a.attr("href").match(re) ? category
                      :                              ( a.attr("href").match(re) )[1];
     var typenm = get_symbol_from_element( a.length == 1 ? a : td );
-    return typecategory ? typecategory+"."+typenm : typenm.toLowerCase();
+    return typecategory ? typecategory+"."+typenm : typenm;
 }
 
 function get_symbol_from_element(e) {
@@ -213,16 +214,23 @@ function make_definition() {
 }
 
 function build_global_type_definition() {
+    var ret = {};
+    for ( var key in gScriptTypeHash ) {
+        var t = gScriptTypeHash[key];
+        if ( ! t.global ) continue;
+        ret[t.name] = build_type_definition(t);
+    }
+    return ret;
 }
 
 function build_local_type_definition() {
     var categoryh = {};
-    for ( var typenm in gScriptTypeHash ) {
-        var t = gScriptTypeHash[typenm];
+    for ( var key in gScriptTypeHash ) {
+        var t = gScriptTypeHash[key];
         if ( t.global ) continue;
         if ( ! categoryh[t.category] ) categoryh[t.category] = {};
         var typeh = categoryh[t.category];
-        typeh[typenm] = build_type_definition(t);
+        typeh[t.name] = build_type_definition(t);
     }
     return categoryh;
 }
@@ -240,7 +248,7 @@ function build_member_definition(type) {
     var props = type.property;
     for ( var i = 0; i < props.length; i++ ) {
         var p = props[i];
-        ret[p.name] = { "!type": p.type, "!doc": p.doc };
+        ret[p.name] = { "!type": build_type_attribute(p.type, false) || "_unknown", "!doc": p.doc };
     }
     var mtds = type.method;
     for ( var i = 0; i < mtds.length; i++ ) {
@@ -251,8 +259,35 @@ function build_member_definition(type) {
 }
 
 function build_method_signature(mtd) {
+    var argpart = "";
+    var args = mtd.argument;
+    for ( var i = 0; i < args.length; i++ ) {
+        var a = args[i];
+        if ( argpart != "" ) argpart += ", ";
+        var typeinfo = build_type_attribute(a.type, false) || "_unknown";
+        argpart += a.name + ": " + typeinfo;
+    }
+    var retinfo = build_type_attribute(mtd.return, true);
+    var retpart = retinfo ? " -> "+retinfo : "";
+    return "fn(" + argpart + ")" + retpart;
+}
+
+function build_type_attribute(typeattr, asInstance) {
+    if ( ! typeattr || typeattr == "" || typeattr == "void" ) return null;
+    var typefullnm = typeattr.replace(/\[\]$/, "");
+    var isArray = typefullnm == typeattr ? false : true;
+    var typepart = "";
+    var type = gScriptTypeHash[typefullnm];
+    if ( ! type ) {
+        if ( typefullnm == "Integer" ) { typepart = "number"; }
+        else                           { typepart = typefullnm.toLowerCase(); }
+    }
+    else {
+        typepart = type.global ? prefix+type.name : prefix+typefullnm;
+    }
+    var prefix = asInstance ? "+" : "";
+    return isArray ? "["+prefix+typepart+"]" : prefix+typepart;
 }
 
 function make_plugin(def) {
 }
-
