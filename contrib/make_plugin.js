@@ -263,7 +263,8 @@ function build_global_type_definition() {
     for ( var key in gScriptTypeHash ) {
         var t = gScriptTypeHash[key];
         if ( ! t.global ) continue;
-        ret[t.name] = build_type_definition(t);
+        // ret[t.name] = build_type_definition(t);
+        ret[t.name] = build_type_attribute(key, true);
     }
     return ret;
 }
@@ -272,7 +273,7 @@ function build_local_type_definition() {
     var categoryh = {};
     for ( var key in gScriptTypeHash ) {
         var t = gScriptTypeHash[key];
-        if ( t.global ) continue;
+        // if ( t.global ) continue;
         if ( ! categoryh[t.category] ) categoryh[t.category] = {};
         var typeh = categoryh[t.category];
         typeh[t.name] = build_type_definition(t);
@@ -293,7 +294,7 @@ function build_member_definition(type) {
     var props = type.property;
     for ( var i = 0; i < props.length; i++ ) {
         var p = props[i];
-        ret[p.name] = { "!type": build_type_attribute(p.type, false) || "_unknown", "!doc": p.doc };
+        ret[p.name] = { "!type": build_type_attribute(p.type, true) || "_unknown", "!doc": p.doc };
     }
     var mtds = type.method;
     for ( var i = 0; i < mtds.length; i++ ) {
@@ -327,11 +328,13 @@ function build_type_attribute(typeattr, asInstance) {
     if ( ! type && ! typefullnm.match(/\./) ) {
         typepart = typefullnm == "Integer" ? "number"
                  : typefullnm == "Boolean" ? "bool"
+                 : typefullnm == "Enum"    ? "string"
                  :                           typefullnm.toLowerCase();
     }
     else {
-        typepart = type && type.global ? prefix+type.name
-                 :                       prefix+typefullnm;
+        // typepart = type && type.global ? prefix+type.name
+        //          :                       prefix+typefullnm;
+        typepart = prefix+typefullnm;
     }
     return isArray ? "["+typepart+"]" : typepart;
 }
