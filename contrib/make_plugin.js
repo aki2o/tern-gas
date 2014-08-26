@@ -8,6 +8,8 @@ SCRIPT_CATEGORIES = ["base", "cache", "charts", "content", "html", "jdbc", "lock
 
 gScriptTypeHash = {};
 gTaskFinished_Of = {};
+gFetchQueue = [];
+gFetchRunning = false;
 
 var request = require("request");
 var jsdom = require("jsdom");
@@ -19,7 +21,9 @@ opts.parse([{ short: "v",
               long: "verbose",
               callback: function () { verbose = true; } }], true);
 
-fetch_category("calendar");
+for ( var i = 0; i < SCRIPT_CATEGORIES.length; i++ ) {
+    fetch_script_category(SCRIPT_CATEGORIES[i]);
+}
 
 
 
@@ -31,35 +35,71 @@ function logging(arg) {
     console.log(arg);
 }
 
+function start_task(tasknm) {
+    gTaskFinished_Of[tasknm] = false;
+}
+
+function finish_task(tasknm) {
+    gTaskFinished_Of[tasknm] = true;
+}
+
+function is_all_task_finished() {
+    for ( var task in gTaskFinished_Of ) {
+        if ( ! gTaskFinished_Of[task] ) return false;
+    }
+    return true;
+}
+
 
 //////////////////////
 // Fetch Definition
 
-function fetch_category(category) {
-    console.info("Fetch documentation for "+category+" ...");
-    gTaskFinished_Of[category] = false;
-    fetch_document(get_category_url(category), function ($) {
+function fetch_script_category(category) {
+    console.info("Fetch reference of "+category+" ...");
+    start_task(category);
+    var url = get_category_url(category);
+    fetch_document(category, url, function ($) {
         parse_category_document(category, $);
-        gTaskFinished_Of[category] = true;
+        logging("Finished fetch category : "+category);
+        finish_task(category);
+        if ( ! is_all_task_finished() ) return;
         make_plugin($);
     });
 }
 
-function fetch_type(category, typenm, url) {
-    var key = category+"."+typenm;
-    gTaskFinished_Of[key] = false;
-    fetch_document(url, function ($) {
+function fetch_script_type(category, typenm, url) {
+    var tasknm = category+"."+typenm;
+    start_task(tasknm);
+    fetch_document(category, url, function ($) {
         parse_type_document(category, typenm, $);
-        gTaskFinished_Of[key] = true;
+        logging("Finished fetch type : "+tasknm);
+        finish_task(tasknm);
+        if ( ! is_all_task_finished() ) return;
         make_plugin($);
     });
 }
 
-function fetch_document(url, success_func) {
-    logging("Start fetch document : "+url);
-    request({ url: url }, function(err, res, body) {
+function fetch_document(category, url, success_func) {
+    gFetchQueue.push({ category: category, url: url, cb: success_func });
+    if ( gFetchRunning ) return;
+    fetch_next_document();
+};
+
+function fetch_next_document() {
+    if ( gFetchQueue.length == 0 ) return;
+    var next = gFetchQueue.shift();
+    run_fetch_document(next.category, next.url, next.cb);
+}
+
+function run_fetch_document(category, url, success_func) {
+    logging("Start fetch url : "+url);
+    gFetchRunning = true;
+    request({ url: url, pool: { agent: false } }, function(err, res, body) {
+        gFetchRunning = false;
+        fetch_next_document();
         if ( err ) {
             console.error("Failed fetch category:'"+category+"' : "+err);
+            throw err;
             return;
         }
         if ( res.statusCode != 200 ) {
@@ -74,7 +114,7 @@ function fetch_document(url, success_func) {
             success_func(window.jQuery);
         }});
     });
-};
+}
 
 function parse_category_document(category, $) {
     // Collect type from sidebar
@@ -92,7 +132,7 @@ function parse_category_document(category, $) {
             var key = category+"."+typenm;
             gScriptTypeHash[key] = { name: typenm, kind: kind, global: global, category: category, url: url };
             logging("Found type : name:'"+typenm+"' kind:'"+kind+"' global:'"+global+"'");
-            fetch_type(category, typenm, url);
+            fetch_script_type(category, typenm, url);
         }
         else {
             var kindval = types.eq(i).find(".tlw-title").text();
@@ -153,7 +193,7 @@ function parse_type_document(category, typenm, $) {
         var sig = get_signature_from_element( mtddetails.eq(i).find("h3") );
         var mtd = mtdsigh[sig];
         if ( ! mtd ) {
-            console.warn("Found unrecognized method of '"+typenm+"' : "+sig);
+            // console.warn("Found unrecognized method of '"+typenm+"' : "+sig);
             continue;
         }
         var args = [];
@@ -229,7 +269,6 @@ function get_documentation_from_element(e) {
 // Make Plugin
 
 function make_plugin($) {
-    if ( ! is_finished() ) return;
     logging("Start make plugin");
     var fpath = __dirname + "/gas.js";
     console.info("Make plugin file ...");
@@ -246,46 +285,43 @@ function make_plugin($) {
 
 function generate_definition($) {
     logging("Start make definition");
-    var ret = { "!name": "gas", "!define": build_local_type_definition() };
-    $.extend(ret, build_global_type_definition());
+    var ret = { "!name": "gas", "!define": build_local_type_definition($) };
+    $.extend(ret, build_global_type_definition($));
     return ret;
 }
 
-function is_finished() {
-    for ( var task in gTaskFinished_Of ) {
-        if ( ! gTaskFinished_Of[task] ) return false;
-    }
-    return true;
-}
-
-function build_global_type_definition() {
+function build_global_type_definition($) {
     var ret = {};
     for ( var key in gScriptTypeHash ) {
         var t = gScriptTypeHash[key];
         if ( ! t.global ) continue;
-        // ret[t.name] = build_type_definition(t);
-        ret[t.name] = build_type_attribute(key, true);
+        ret[t.name] = build_type_definition($, t, true);
     }
     return ret;
 }
 
-function build_local_type_definition() {
+function build_local_type_definition($) {
     var categoryh = {};
     for ( var key in gScriptTypeHash ) {
         var t = gScriptTypeHash[key];
-        // if ( t.global ) continue;
+        if ( t.global ) continue;
         if ( ! categoryh[t.category] ) categoryh[t.category] = {};
         var typeh = categoryh[t.category];
-        typeh[t.name] = build_type_definition(t);
+        typeh[t.name] = build_type_definition($, t, false);
     }
     return categoryh;
 }
 
-function build_type_definition(type) {
+function build_type_definition($, type, asStatic) {
     var ret = {};
     ret["!url"] = type.url;
     ret["!doc"] = type.doc;
-    ret["prototype"] = build_member_definition(type);
+    if ( asStatic ) {
+        $.extend(ret, build_member_definition(type));
+    }
+    else {
+        ret["prototype"] = build_member_definition(type);
+    }
     return ret;
 }
 
@@ -294,7 +330,7 @@ function build_member_definition(type) {
     var props = type.property;
     for ( var i = 0; i < props.length; i++ ) {
         var p = props[i];
-        ret[p.name] = { "!type": build_type_attribute(p.type, true) || "_unknown", "!doc": p.doc };
+        ret[p.name] = { "!type": build_type_attribute(p.type, true) || "?", "!doc": p.doc };
     }
     var mtds = type.method;
     for ( var i = 0; i < mtds.length; i++ ) {
@@ -310,7 +346,7 @@ function build_method_signature(mtd) {
     for ( var i = 0; i < args.length; i++ ) {
         var a = args[i];
         if ( argpart != "" ) argpart += ", ";
-        var typeinfo = build_type_attribute(a.type, false) || "_unknown";
+        var typeinfo = build_type_attribute(a.type, false) || "?";
         argpart += a.name + ": " + typeinfo;
     }
     var retinfo = build_type_attribute(mtd.return, true);
@@ -332,9 +368,8 @@ function build_type_attribute(typeattr, asInstance) {
                  :                           typefullnm.toLowerCase();
     }
     else {
-        // typepart = type && type.global ? prefix+type.name
-        //          :                       prefix+typefullnm;
-        typepart = prefix+typefullnm;
+        typepart = type && type.global ? prefix+type.name
+                 :                       prefix+typefullnm;
     }
     return isArray ? "["+typepart+"]" : typepart;
 }
