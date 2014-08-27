@@ -39,7 +39,7 @@ function make_plugin(fpath) {
     fs.readdir(refdir, function (err, files) {
         if ( err ) {
             console.error("Failed access '"+refdir+"' : "+err);
-            return;
+            process.exit(1);
         }
 
         files.filter(function (f) {
@@ -60,7 +60,7 @@ function make_plugin(fpath) {
         fs.writeFile(fpath, wbuff, "utf8", function (err) {
             if ( err ) {
                 console.error("Failed write plugin : "+err);
-                return;
+                process.exit(1);
             }
             console.info("Finished make plugin : "+fpath);
         });

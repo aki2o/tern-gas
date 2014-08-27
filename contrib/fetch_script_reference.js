@@ -36,8 +36,8 @@ var verbose = opts.get("verbose");
 var category = opts.get("category");
 if ( SCRIPT_CATEGORIES.indexOf(category) == -1 ) {
     console.error("Unknown category : "+category);
-    console.info("You can see the category list by using category-list option");
-    process.exit();
+    console.error("You can see the category list by using category-list option");
+    process.exit(1);
 }
 fetch_script_category(category);
 
@@ -113,17 +113,16 @@ function run_fetch_document(desc, url, success_func) {
         fetch_next_document();
         if ( err ) {
             console.error("Failed fetch '"+desc+"' : "+err);
-            throw err;
-            return;
+            process.exit(1);
         }
         if ( res.statusCode != 200 ) {
             console.error("Failed fetch '"+desc+"' : Returned status is "+res.statusCode);
-            return;
+            process.exit(1);
         }
         jsdom.env({ html: body, scripts: [ JQUERY_URL ] , done: function(err, window) {
             if ( err ) {
                 console.error("Failed do jsdom : "+err);
-                return;
+                process.exit(1);
             }
             success_func(window.jQuery);
         }});
@@ -289,7 +288,7 @@ function make_reference(category) {
     fs.writeFile(fpath, JSON.stringify(gScriptTypeHash), "utf8", function (err) {
         if ( err ) {
             console.error("Failed write plugin : "+err);
-            return;
+            process.exit(1);
         }
         console.info("Finished make reference : "+fpath);
     });
