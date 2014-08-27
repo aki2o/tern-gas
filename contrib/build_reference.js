@@ -142,21 +142,28 @@ function build_method_signature(mtd) {
 
 function build_type_attribute(typeattr, asInstance) {
     if ( ! typeattr || typeattr == "" || typeattr == "void" ) return null;
-    var typefullnm = typeattr.replace(/\[\]$/, "");
-    var isArray = typefullnm == typeattr ? false : true;
+    var arrnest = 0;
+    var arrre = /\[\]$/;
+    while ( typeattr.match(arrre) ) {
+        arrnest++;
+        typeattr = typeattr.replace(arrre, "");
+    }
     var prefix = asInstance ? "+" : "";
-    var typepart = "";
-    var type = gTypeHash[typefullnm];
-    if ( ! type && ! typefullnm.match(/\./) ) {
-        typepart = typefullnm == "Integer" ? "number"
-                 : typefullnm == "Boolean" ? "bool"
-                 : typefullnm == "Enum"    ? "string"
-                 :                           typefullnm.toLowerCase();
+    var ret = "";
+    var type = gTypeHash[typeattr];
+    if ( ! type && ! typeattr.match(/\./) ) {
+        ret = typeattr == "Integer" ? "number"
+            : typeattr == "Boolean" ? "bool"
+            : typeattr == "Enum"    ? "string"
+            :                         typeattr.toLowerCase();
     }
     else {
-        typepart = type && type.global ? prefix+type.name
-                 :                       prefix+typefullnm;
+        ret = type && type.global ? prefix+type.name
+            :                       prefix+typeattr;
     }
-    return isArray ? "["+typepart+"]" : typepart;
+    for ( var i = 0; i < arrnest; i++ ) {
+        ret = "["+ret+"]";
+    }
+    return ret;
 }
 
