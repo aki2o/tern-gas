@@ -29,6 +29,11 @@ function logging(arg) {
     console.log(arg);
 }
 
+function fix_to_symbol(str) {
+    return ! str ? ""
+           :       str.replace(/\s+/g, "").replace(/-/g, "");
+}
+
 
 /////////////////
 // Make Plugin
@@ -79,16 +84,17 @@ function build_global_type_definition() {
 }
 
 function build_local_type_definition() {
-    var categoryh = {};
+    var ret = {};
     var keys = Object.keys(gTypeHash);
     for ( var i = 0; i < keys.length; i++ ) {
         var t = gTypeHash[ keys[i] ];
         if ( t.global ) continue;
-        if ( ! categoryh[t.category] ) categoryh[t.category] = {};
-        var ctypeh = categoryh[t.category];
+        var sctg = fix_to_symbol(t.category);
+        if ( ! ret[sctg] ) ret[sctg] = {};
+        var ctypeh = ret[sctg];
         ctypeh[t.name] = build_type_definition(t, false);
     }
-    return categoryh;
+    return ret;
 }
 
 function build_type_definition(type, asStatic) {

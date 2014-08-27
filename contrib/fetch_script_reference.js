@@ -8,7 +8,7 @@ SCRIPT_CATEGORIES = ["base", "cache", "charts", "content", "html", "jdbc", "lock
                      "calendar", "contacts", "docs-list", "document", "drive", "forms",
                      "gmail", "groups", "language", "maps", "sites", "spreadsheet" ];
 
-gScriptTypeHash = {};
+gTypeHash = {};
 gTaskFinished_Of = {};
 gFetchQueue = [];
 gFetchRunning = false;
@@ -65,6 +65,15 @@ function is_all_task_finished() {
     return true;
 }
 
+function fix_to_symbol(str) {
+    return ! str ? ""
+           :       str.replace(/\s+/g, "").replace(/-/g, "");
+}
+
+function is_symbol(str) {
+    return str && str.match(/^[a-zA-Z0-9._]+$/) ? true : false;
+}
+
 
 //////////////////////
 // Fetch Definition
@@ -82,7 +91,7 @@ function fetch_script_category(category) {
 }
 
 function fetch_script_type(category, typenm, url) {
-    var typefullnm = category+"."+typenm;
+    var typefullnm = get_type_fullnm(category, typenm);
     start_task(typefullnm);
     fetch_document(typefullnm, url, function ($) {
         parse_type_document(category, typenm, $);
@@ -140,10 +149,10 @@ function parse_category_document(category, $) {
         var tlink = types.eq(i).find("a");
         if ( tlink.length > 0 ) {
             var typenm = tlink.eq(0).attr("title");
-            if ( ! typenm || typenm.match(/[^a-zA-Z0-9._]/) ) continue;
+            if ( ! is_symbol(typenm) ) continue;
             var url = get_refer_url( category, tlink.eq(0) );
-            var key = category+"."+typenm;
-            gScriptTypeHash[key] = { name: typenm, kind: kind, global: global, category: category, url: url };
+            var key = get_type_fullnm(category, typenm);
+            gTypeHash[key] = { name: typenm, kind: kind, global: global, category: category, url: url };
             logging("Found type : name:'"+typenm+"' kind:'"+kind+"' global:'"+global+"'");
             fetch_script_type(category, typenm, url);
         }
@@ -160,7 +169,8 @@ function parse_category_document(category, $) {
 
 function parse_type_document(category, typenm, $) {
     var maincontent = $("#gc-content");
-    var type = gScriptTypeHash[category+"."+typenm];
+    var key = get_type_fullnm(category, typenm);
+    var type = gTypeHash[key];
     if ( ! type ) return;
     
     // Get doc of type
@@ -255,6 +265,13 @@ function get_refer_url(category, a) {
     }
 }
 
+function get_type_fullnm(category, typenm) {
+    var ctg = fix_to_symbol(category);
+    return ! typenm || typenm == "" ? ""
+         : ctg == ""                ? typenm
+         :                            ctg+"."+typenm;
+}
+
 function get_type_from_cell(category, td) {
     var re = /\/([^/]+)\/[^/]+$/;
     var a = td.find("a");
@@ -263,11 +280,11 @@ function get_type_from_cell(category, td) {
                      : ! a.attr("href").match(re) ? category
                      :                              ( a.attr("href").match(re) )[1];
     var typenm = get_symbol_from_element( a.length == 1 ? a : td );
-    return typecategory ? typecategory+"."+typenm : typenm;
+    return get_type_fullnm(typecategory, typenm);
 }
 
 function get_symbol_from_element(e) {
-    return e.text().replace(/\s+/g, "");
+    return fix_to_symbol( e.text() );
 }
 
 function get_signature_from_element(e) {
@@ -285,7 +302,7 @@ function get_documentation_from_element(e) {
 function make_reference(category) {
     logging("Start make reference : "+category);
     var fpath = __dirname + "/refs/" + category + ".json";
-    fs.writeFile(fpath, JSON.stringify(gScriptTypeHash), "utf8", function (err) {
+    fs.writeFile(fpath, JSON.stringify(gTypeHash), "utf8", function (err) {
         if ( err ) {
             console.error("Failed write plugin : "+err);
             process.exit(1);
