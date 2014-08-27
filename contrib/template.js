@@ -8,10 +8,8 @@
     "use strict";
     
     tern.registerPlugin("gas", function(server, options) {
-        server._gmaps = {};
-        return {
-            defs : defs
-        };
+        server._gas = {};
+        return { defs : defs };
     });
     
     var defs = '!def';
