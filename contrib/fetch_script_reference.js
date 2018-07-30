@@ -1,12 +1,25 @@
 #!/usr/bin/env node
 
 JQUERY_URL = "http://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.js";
-GOOGLE_DOC_SERVER = "http://developers.google.com";
+GOOGLE_DOC_SERVER = "https://developers.google.com";
 ROOT_URI = "/apps-script/reference/";
-SCRIPT_CATEGORIES = ["base", "cache", "charts", "content", "html", "jdbc", "lock", "mail",
+/*
+SCRIPT_CATEGORIES_OLD = ["base", "cache", "charts", "content", "html", "jdbc", "lock", "mail",
                      "properties", "script", "ui", "url-fetch", "utilities", "xml-service",
                      "calendar", "contacts", "docs-list", "document", "drive", "forms",
                      "gmail", "groups", "language", "maps", "sites", "spreadsheet" ];
+
+                    //docs-list is deprecated, so is ui
+                     */
+
+
+SCRIPT_CATEGORIES = ["base", "cache", "calendar", "card-service", "charts", "contacts", "content",
+                    "document", "drive", "forms", "gmail", "groups", "html", "jdbc", "language",
+                    "lock", "mail", "maps", "optimization", "properties", "script", "sites",
+                    "slides", "spreadsheet", "url-fetch", "utilities", "xml-service"]
+                    //untested for advanced google services: https://developers.google.com/apps-script/guides/services/advanced
+                    //would be good to add support for Advanced Google Services
+                    //future project is to add sample code for methods 
 
 gTypeHash = {};
 gTaskFinished_Of = {};
@@ -15,7 +28,7 @@ gFetchRunning = false;
 
 var opts = require("opts");
 var request = require("request");
-var jsdom = require("jsdom");
+var jsdom = require("jsdom/lib/old-api.js"); //
 var fs = require("fs");
 
 opts.parse([{ short: "v",
@@ -81,6 +94,7 @@ function is_symbol(str) {
 function fetch_script_category(category) {
     start_task(category);
     var url = get_category_url(category);
+    console.log("category url is : ",url)
     fetch_document(category, url, function ($) {
         parse_category_document(category, $);
         logging("Finished fetch category : "+category);
@@ -90,6 +104,11 @@ function fetch_script_category(category) {
     });
 }
 
+
+/**
+*
+*
+*/
 function fetch_script_type(category, typenm, url) {
     var typefullnm = get_type_fullnm(category, typenm);
     start_task(typefullnm);
@@ -121,13 +140,16 @@ function run_fetch_document(desc, url, success_func) {
         gFetchRunning = false;
         fetch_next_document();
         if ( err ) {
-            console.error("Failed fetch '"+desc+"' : "+err);
+            console.error("Failed fetch '"+desc+"' : "+err+ "; url was:  "+url);
             process.exit(1);
         }
         if ( res.statusCode != 200 ) {
-            console.error("Failed fetch '"+desc+"' : Returned status is "+res.statusCode);
+            console.error("Failed fetch '"+desc+"' : Returned status is "+res.statusCode+ "; url was:  "+url);
             process.exit(1);
         }
+
+        //jsdom.env is no longer supported in jsdom package, but is available with the old api 
+
         jsdom.env({ html: body, scripts: [ JQUERY_URL ] , done: function(err, window) {
             if ( err ) {
                 console.error("Failed do jsdom : "+err);
@@ -139,28 +161,28 @@ function run_fetch_document(desc, url, success_func) {
 }
 
 function parse_category_document(category, $) {
-    // Collect type from sidebar
     logging("Start parse to category : "+category);
-    var types = find_types_in_sidebar(category, $);
+    var types = find_types_in_sidebar(category, $); //get the li elements from dropdown for e.g.GmailApp, GmailAttachment
     if ( ! types ) return;
     var kind = "class";
     var global = true;
-    for ( var i = 0; i < types.length; i++ ) {
-        var tlink = types.eq(i).find("a");
+    for ( var i = 1; i < types.length; i++ ) { //skips "Overview" page
+        var tlink = types.eq(i).find("a"); 
         if ( tlink.length > 0 ) {
-            var typenm = tlink.eq(0).attr("title");
+            var typenm = tlink.eq(0).text(); //e.g. string "GmailLabel" ,"GmailApp"
             if ( ! is_symbol(typenm) ) continue;
-            var url = get_refer_url( category, tlink.eq(0) );
-            var key = get_type_fullnm(category, typenm);
+            var url = get_refer_url( category, tlink.eq(0) ); //get link to GmailLabel page
+            var key = get_type_fullnm(category, typenm); //store key as 'gmail.GmailApp'
             gTypeHash[key] = { name: typenm, kind: kind, global: global, category: category, url: url };
             logging("Found type : name:'"+typenm+"' kind:'"+kind+"' global:'"+global+"'");
             fetch_script_type(category, typenm, url);
         }
         else {
-            var kindval = types.eq(i).find(".tlw-title").text();
-            kind = kindval.match(/CLASSES/)    ? "class"
-                 : kindval.match(/INTERFACES/) ? "interface"
-                 : kindval.match(/ENUMS/)      ? "enum"
+            //change kind -->figure out if class,interface,enums so can mark kind. changes global to false. clever.
+            var kindval = types.eq(i).text();
+            kind = kindval.match(/Classes/)    ? "class"
+                 : kindval.match(/Interfaces/) ? "interface"
+                 : kindval.match(/Enums/)      ? "enum"
                  :                               "";
             global = false;
         }
@@ -168,21 +190,24 @@ function parse_category_document(category, $) {
 }
 
 function parse_type_document(category, typenm, $) {
-    var maincontent = $("#gc-content");
-    var key = get_type_fullnm(category, typenm);
-    var type = gTypeHash[key];
+    var maincontent = $("article.devsite-article-inner"); //outside div
+    var key = get_type_fullnm(category, typenm); //gmail.FormApp for example
+    var type = gTypeHash[key]; //find its obj
+     
     if ( ! type ) return;
+    var this_page_url = type.url; //html format changed, so we need this to create the url for methods.
     
     // Get doc of type
-    type.doc = get_documentation_from_element( maincontent.find(".type.doc") );
+    type.doc = get_documentation_from_element( maincontent.find(".type.doc").find("p").eq(0) ); //main description at top:
+
     logging("Got doc of type:'"+typenm+"' : "+type.doc);
     
     // Get property
     var props = [];
-    var propdefs = maincontent.find(".type.toc table.members.property");
-    if ( propdefs.length > 0 ) {
-        var propentries = propdefs.eq(0).find("tr");
-        for ( var i = 1; i < propentries.length; i++ ) {
+    var propdefs = maincontent.find(".type.toc table.members.property"); //get properties
+    if ( propdefs.length > 0 ) { //if they exist
+        var propentries = propdefs.eq(0).find("tr"); //get rows
+        for ( var i = 1; i < propentries.length; i++ ) { //skip header
             var e = propentries.eq(i).find("td");
             var propnm = get_symbol_from_element( e.eq(0) );
             var ptype = get_type_from_cell( category, e.eq(1) );
@@ -196,14 +221,14 @@ function parse_type_document(category, typenm, $) {
     // Get method
     var mtds = [];
     var mtdsigh = {};
-    var mtddefs = maincontent.find(".type.toc table.members.function");
+    var mtddefs = maincontent.find(".type.toc table.members.function"); //get the table
     if ( mtddefs.length > 0 ) {
         var mtdentries = mtddefs.eq(0).find("tr");
         for ( var i = 1; i < mtdentries.length; i++ ) {
             var e = mtdentries.eq(i).find("td");
             var sig = get_signature_from_element( e.eq(0).find("a") );
             var mtdnm = sig.replace(/\(.+$/, "");
-            var url = get_refer_url( category, e.eq(0).find("a").eq(0) );
+            var url = this_page_url + "/" + get_refer_url( category, e.eq(0).find("a").eq(0) ); //gets correct url;
             var ret = get_type_from_cell( category, e.eq(1) );
             var doc = get_documentation_from_element( e.eq(2) );
             var mtd = { name: mtdnm, signature: sig, return: ret, doc: doc, url: url };
@@ -212,9 +237,9 @@ function parse_type_document(category, typenm, $) {
             logging("Got method of '"+typenm+"' : sig:'"+sig+"' ret:'"+ret+"' doc:'"+doc+"'"+"' url:'"+url+"'");
         }
     }
-    var mtddetails = maincontent.find(".function.doc");
+    var mtddetails = maincontent.find(".function.doc"); //get the divs with the details
     for ( var i = 0; i < mtddetails.length; i++ ) {
-        var sig = get_signature_from_element( mtddetails.eq(i).find("h3") );
+        var sig = get_signature_from_element( mtddetails.eq(i).find("h3") ); 
         var mtd = mtdsigh[sig];
         if ( ! mtd ) {
             // console.warn("Found unrecognized method of '"+typenm+"' : "+sig);
@@ -235,36 +260,53 @@ function parse_type_document(category, typenm, $) {
     type.method = mtds;
 }
 
+
+//find Gmail related classes and category
 function find_types_in_sidebar(category, $) {
-    var titles = $("#gc-sidebar a");
+    var titles = $("a[href='https://developers.google.com/apps-script/reference/" + category + "/'") //gets the right section directly without looking at all links in sidebar
     var categoryurl = get_category_url(category);
     for ( var i = 0; i < titles.length; i++ ) {
         var url = get_refer_url( category, titles.eq(i) );
         if ( ! url || url != categoryurl ) continue;
         logging("Found category element in sidebar : "+category);
-        return titles.eq(i).parent().find("li");
+        return titles.eq(i).parent().parent().find("li");
     }
     console.error("Failed find category element in sidebar : "+category);
     return;
 }
+
+
+
+
 
 function get_category_url(category) {
     return GOOGLE_DOC_SERVER + ROOT_URI + category;
 }
 
 function get_refer_url(category, a) {
+
+    /* 
+    URLs changed in documentation so this needed tweeking. Returns entire href URL unless is same page link (with #).
+    */
+
     var href = a ? a.attr("href") : null;
     if ( ! href || href == "" ) {
         return null;
+    }
+
+    else if (href == GOOGLE_DOC_SERVER + ROOT_URI+ category + "/") {
+        return GOOGLE_DOC_SERVER + ROOT_URI+ category;
     }
     else if ( href.match(/^\//) ) {
         return GOOGLE_DOC_SERVER + href;
     }
     else {
-        return GOOGLE_DOC_SERVER + ROOT_URI + category + "/" + href;
+        //just return the entire link
+        return href;
     }
 }
 
+//return string
 function get_type_fullnm(category, typenm) {
     var ctg = fix_to_symbol(category);
     return ! typenm || typenm == "" ? ""

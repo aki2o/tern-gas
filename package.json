@@ -2,7 +2,7 @@
   "name": "tern-gas",
   "version": "0.0.1",
   "description": "A plugin of tern for Google Apps Script.",
-  "main": "gas.js",
+  "main": "gas-2018.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -14,5 +14,11 @@
   "license": "BSD",
   "bugs": {
     "url": "https://github.com/aki2o/tern-gas/issues"
+  },
+  "dependencies": {
+    "jsdom": "^11.12.0",
+    "node.extend": "^2.0.0",
+    "opts": "^1.2.6",
+    "request": "^2.87.0"
   }
 }
