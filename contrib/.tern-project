@@ -5,6 +5,5 @@
         "jquery"
     ],
     "plugins": {
-    	"gas-2018": {}
     }
 }
