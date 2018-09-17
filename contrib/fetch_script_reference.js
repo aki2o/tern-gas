@@ -3,23 +3,12 @@
 JQUERY_URL = "http://ajax.googleapis.com/ajax/libs/jquery/1.8.3/jquery.js";
 GOOGLE_DOC_SERVER = "https://developers.google.com";
 ROOT_URI = "/apps-script/reference/";
-/*
-SCRIPT_CATEGORIES_OLD = ["base", "cache", "charts", "content", "html", "jdbc", "lock", "mail",
-                     "properties", "script", "ui", "url-fetch", "utilities", "xml-service",
-                     "calendar", "contacts", "docs-list", "document", "drive", "forms",
-                     "gmail", "groups", "language", "maps", "sites", "spreadsheet" ];
 
-                    //docs-list is deprecated, so is ui
-                     */
-
-
+//does not include any Advanced Google Services
 SCRIPT_CATEGORIES = ["base", "cache", "calendar", "card-service", "charts", "contacts", "content",
                     "document", "drive", "forms", "gmail", "groups", "html", "jdbc", "language",
                     "lock", "mail", "maps", "optimization", "properties", "script", "sites",
                     "slides", "spreadsheet", "url-fetch", "utilities", "xml-service"]
-                    //untested for advanced google services: https://developers.google.com/apps-script/guides/services/advanced
-                    //would be good to add support for Advanced Google Services
-                    //future project is to add sample code for methods 
 
 gTypeHash = {};
 gTaskFinished_Of = {};
@@ -28,7 +17,7 @@ gFetchRunning = false;
 
 var opts = require("opts");
 var request = require("request");
-var jsdom = require("jsdom/lib/old-api.js"); //
+var jsdom = require("jsdom/lib/old-api.js");
 var fs = require("fs");
 
 opts.parse([{ short: "v",
@@ -94,7 +83,6 @@ function is_symbol(str) {
 function fetch_script_category(category) {
     start_task(category);
     var url = get_category_url(category);
-    console.log("category url is : ",url)
     fetch_document(category, url, function ($) {
         parse_category_document(category, $);
         logging("Finished fetch category : "+category);
@@ -104,11 +92,6 @@ function fetch_script_category(category) {
     });
 }
 
-
-/**
-*
-*
-*/
 function fetch_script_type(category, typenm, url) {
     var typefullnm = get_type_fullnm(category, typenm);
     start_task(typefullnm);
@@ -148,8 +131,8 @@ function run_fetch_document(desc, url, success_func) {
             process.exit(1);
         }
 
-        //jsdom.env is no longer supported in jsdom package, but is available with the old api 
-
+      //jsdom.env is no longer supported in standard jsdom package, but is available
+      //using the old api 
         jsdom.env({ html: body, scripts: [ JQUERY_URL ] , done: function(err, window) {
             if ( err ) {
                 console.error("Failed do jsdom : "+err);
@@ -193,9 +176,8 @@ function parse_type_document(category, typenm, $) {
     var maincontent = $("article.devsite-article-inner"); //outside div
     var key = get_type_fullnm(category, typenm); //gmail.FormApp for example
     var type = gTypeHash[key]; //find its obj
-     
     if ( ! type ) return;
-    var this_page_url = type.url; //html format changed, so we need this to create the url for methods.
+    var this_page_url = type.url; //new documentation's html format changed, so we need this to create the url for methods.
     
     // Get doc of type
     type.doc = get_documentation_from_element( maincontent.find(".type.doc").find("p").eq(0) ); //main description at top:
@@ -260,10 +242,10 @@ function parse_type_document(category, typenm, $) {
     type.method = mtds;
 }
 
-
-//find Gmail related classes and category
+//find related classes and category
 function find_types_in_sidebar(category, $) {
-    var titles = $("a[href='https://developers.google.com/apps-script/reference/" + category + "/'") //gets the right section directly without looking at all links in sidebar
+     //gets the right section directly without looking at all links in sidebar
+    var titles = $("a[href='https://developers.google.com/apps-script/reference/" + category + "/'")
     var categoryurl = get_category_url(category);
     for ( var i = 0; i < titles.length; i++ ) {
         var url = get_refer_url( category, titles.eq(i) );
@@ -275,20 +257,12 @@ function find_types_in_sidebar(category, $) {
     return;
 }
 
-
-
-
-
 function get_category_url(category) {
     return GOOGLE_DOC_SERVER + ROOT_URI + category;
 }
 
 function get_refer_url(category, a) {
-
-    /* 
-    URLs changed in documentation so this needed tweeking. Returns entire href URL unless is same page link (with #).
-    */
-
+    // URLs changed in new documentation. Now returns entire href URL unless is same page link (with #).
     var href = a ? a.attr("href") : null;
     if ( ! href || href == "" ) {
         return null;
@@ -352,4 +326,3 @@ function make_reference(category) {
         console.info("Finished make reference : "+fpath);
     });
 }
-
