@@ -2,7 +2,7 @@
   "name": "tern-gas",
   "version": "0.0.1",
   "description": "A plugin of tern for Google Apps Script.",
-  "main": "gas-2018.js",
+  "main": "gas.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
